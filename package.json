@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "dev:backend": "uvicorn --app-dir backend main:app --reload --port 8000",
+    "dev:all": "./start-local.sh",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",

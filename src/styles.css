@@ -9,8 +9,8 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Instrument Serif", "Cormorant Garamond", ui-serif, Georgia, serif;
+  --font-sans: "Inter", "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -36,7 +36,7 @@
 
 :root {
   --radius: 0.625rem;
-  /* warm off-white / clinical calm */
+  /* Light Mode - Warm Clinical Calm */
   --background: oklch(0.985 0.004 95);
   --foreground: oklch(0.22 0.015 250);
 
@@ -46,7 +46,6 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.22 0.015 250);
 
-  /* primary = deep ink, used sparingly */
   --primary: oklch(0.28 0.02 250);
   --primary-foreground: oklch(0.985 0.004 95);
 
@@ -56,7 +55,6 @@
   --muted: oklch(0.955 0.006 95);
   --muted-foreground: oklch(0.5 0.015 250);
 
-  /* accent = muted teal/sage — the one confident color */
   --accent: oklch(0.55 0.07 180);
   --accent-foreground: oklch(0.99 0.005 180);
 
@@ -71,6 +69,40 @@
   --sidebar-foreground: oklch(0.22 0.015 250);
 }
 
+/* Night Mode / Dark Mode Theme Variables */
+.dark {
+  --background: oklch(0.14 0.015 250);
+  --foreground: oklch(0.95 0.005 95);
+
+  --card: oklch(0.18 0.015 250);
+  --card-foreground: oklch(0.95 0.005 95);
+
+  --popover: oklch(0.18 0.015 250);
+  --popover-foreground: oklch(0.95 0.005 95);
+
+  --primary: oklch(0.95 0.005 95);
+  --primary-foreground: oklch(0.14 0.015 250);
+
+  --secondary: oklch(0.22 0.015 250);
+  --secondary-foreground: oklch(0.95 0.005 95);
+
+  --muted: oklch(0.22 0.015 250);
+  --muted-foreground: oklch(0.65 0.015 250);
+
+  --accent: oklch(0.65 0.12 180);
+  --accent-foreground: oklch(0.12 0.015 250);
+
+  --destructive: oklch(0.55 0.19 27);
+  --destructive-foreground: oklch(0.985 0.004 95);
+
+  --border: oklch(0.26 0.015 250);
+  --input: oklch(0.26 0.015 250);
+  --ring: oklch(0.65 0.12 180);
+
+  --sidebar: oklch(0.16 0.015 250);
+  --sidebar-foreground: oklch(0.95 0.005 95);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -80,13 +112,14 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     font-feature-settings: "cv02", "cv03", "cv11";
+    line-height: 1.6;
   }
   .font-serif {
     font-family: var(--font-serif);
   }
 }
 
-/* live waveform bars for recording state */
+/* Live waveform animation */
 @keyframes wf {
   0%, 100% { transform: scaleY(0.3); }
   50% { transform: scaleY(1); }

@@ -12,9 +12,12 @@ import {
   LogOut,
   ShieldCheck,
   User,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
+import { useTheme } from "@/lib/theme";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,7 +56,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <div className="flex min-h-screen w-full bg-background text-foreground">
+    <div className="flex min-h-screen w-full bg-background text-foreground transition-colors duration-200">
       <aside
         className={cn(
           "flex flex-col border-r border-border bg-sidebar transition-all duration-200",
@@ -65,7 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Stethoscope className="h-4 w-4" />
           </div>
           {!collapsed && (
-            <span className="font-serif text-lg tracking-tight text-foreground">Verifact</span>
+            <span className="font-sans text-lg font-bold tracking-tight text-foreground">Verifact</span>
           )}
         </div>
 
@@ -81,7 +84,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   "mb-1 flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                   collapsed && "justify-center px-0",
                   active
-                    ? "bg-accent text-accent-foreground font-medium"
+                    ? "bg-accent text-accent-foreground font-semibold"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
                 title={collapsed ? item.label : undefined}
@@ -118,12 +121,21 @@ export function TopBar({
   title: string;
   extras?: ReactNode;
 }) {
+  const { theme, toggleTheme } = useTheme();
+
   return (
-    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background/90 px-6 backdrop-blur">
-      <h1 className="font-serif text-xl tracking-tight text-foreground truncate">{title}</h1>
+    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background/90 px-6 backdrop-blur transition-colors duration-200">
+      <h1 className="font-sans text-xl font-bold tracking-tight text-foreground truncate">{title}</h1>
 
       <div className="ml-auto flex items-center gap-3">
         {extras}
+        <button
+          onClick={toggleTheme}
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-foreground hover:bg-muted transition"
+          title={`Switch to ${theme === "light" ? "Night Mode" : "Light Mode"}`}
+        >
+          {theme === "light" ? <Moon className="h-4 w-4 text-slate-700" /> : <Sun className="h-4 w-4 text-amber-400" />}
+        </button>
         <div className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent-foreground">
           <Lock className="h-3 w-3 text-accent" />
           <span className="hidden sm:inline">Local processing</span>
@@ -190,13 +202,13 @@ function ProfileChip() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Lock className="h-4 w-4 text-accent" />Compliance status</DialogTitle>
-            <DialogDescription>Audio processed via AssemblyAI, notes via Groq.</DialogDescription>
+            <DialogDescription>100% Local DPDP Compliant Pipeline</DialogDescription>
           </DialogHeader>
           <ul className="divide-y divide-border rounded-lg border border-border text-sm">
-            <li className="flex justify-between px-3 py-2"><span className="text-muted-foreground">Transcription</span><span>AssemblyAI (encrypted)</span></li>
-            <li className="flex justify-between px-3 py-2"><span className="text-muted-foreground">Note generation</span><span>Groq (Llama 3.3)</span></li>
-            <li className="flex justify-between px-3 py-2"><span className="text-muted-foreground">Audio retention</span><span>Deleted after transcription</span></li>
-            <li className="flex justify-between px-3 py-2"><span className="text-muted-foreground">Data scoping</span><span>Row-level security (RLS)</span></li>
+            <li className="flex justify-between px-3 py-2"><span className="text-muted-foreground">Transcription</span><span>Local Whisper (medium/large-v3)</span></li>
+            <li className="flex justify-between px-3 py-2"><span className="text-muted-foreground">PII Redaction</span><span>Local Microsoft Presidio</span></li>
+            <li className="flex justify-between px-3 py-2"><span className="text-muted-foreground">Note Generation</span><span>Local Ollama (MedGemma)</span></li>
+            <li className="flex justify-between px-3 py-2"><span className="text-muted-foreground">Database</span><span>Local SQLite (verifact_local.db)</span></li>
           </ul>
         </DialogContent>
       </Dialog>

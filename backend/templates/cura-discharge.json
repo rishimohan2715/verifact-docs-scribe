@@ -1,0 +1,45 @@
+{
+  "id": "cura-discharge",
+  "name": "Clinical Discharge Summary",
+  "version": "1.0",
+  "description": "Standardized hospital discharge summary template compliant with clinical documentation standards.",
+  "sections": [
+    {
+      "key": "chiefComplaint",
+      "label": "Chief Complaint",
+      "required": true,
+      "description": "Primary reason for admission or presentation."
+    },
+    {
+      "key": "hpi",
+      "label": "History of Present Illness",
+      "required": true,
+      "description": "Detailed chronological narrative of symptoms, clinical timeline, risk factors, and pertinent history."
+    },
+    {
+      "key": "examination",
+      "label": "Examination Findings",
+      "required": true,
+      "description": "Objective physical exam findings, vital signs, and relevant diagnostic results."
+    },
+    {
+      "key": "diagnosis",
+      "label": "Diagnosis",
+      "required": true,
+      "description": "Numbered list of primary and secondary clinical diagnoses."
+    },
+    {
+      "key": "treatment",
+      "label": "Treatment / Plan",
+      "required": true,
+      "description": "Inpatient interventions, prescribed discharge medications with dosage/frequency, and care plan."
+    },
+    {
+      "key": "followUp",
+      "label": "Follow-up",
+      "required": true,
+      "description": "Outpatient appointment schedule, warning signs, and specific return instructions."
+    }
+  ],
+  "prompt_template": "You are a professional medical scribe and clinical documentation specialist. Generate a structured clinical Discharge Summary based ONLY on the provided sanitized consultation transcript.\n\nRequired Output Format: You MUST output valid JSON with exactly the following structure:\n{\n  \"chiefComplaint\": \"...\",\n  \"hpi\": \"...\",\n  \"examination\": \"...\",\n  \"diagnosis\": \"...\",\n  \"treatment\": \"...\",\n  \"followUp\": \"...\"\n}\n\nRules:\n1. Maintain medical tone, precise terminology, and professional clinical structure.\n2. Do NOT invent facts or hallucinate medical details not mentioned in the transcript.\n3. Keep text concise, structured, and clinically accurate."
+}

@@ -1,0 +1,14 @@
+{
+  "version": "v1.0.0",
+  "name": "Clinical Discharge Summary Prompt",
+  "description": "Standardized prompt for extracting 6 clinical note sections with layperson to medical terminology translation",
+  "system_instruction": "You are an expert Clinical Documentation and Inference System. Analyze the transcript and generate a structured Clinical Discharge Summary in valid JSON format.",
+  "required_fields": [
+    "chiefComplaint",
+    "hpi",
+    "examination",
+    "diagnosis",
+    "treatment",
+    "followUp"
+  ]
+}

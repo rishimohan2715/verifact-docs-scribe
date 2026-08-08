@@ -1,26 +1,38 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import type { User, Session } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface DoctorSession {
-  user: User;
-  session: Session;
-  /** Display name: email prefix or full_name from user metadata */
+  user: {
+    id: string;
+    email: string;
+    user_metadata: {
+      full_name: string;
+    };
+  };
   displayName: string;
-  /** Initials for the avatar chip */
   initials: string;
 }
 
 interface AuthContextValue {
   doctor: DoctorSession | null;
-  /** true while Supabase is resolving the initial session */
   loading: boolean;
   signOut: () => Promise<void>;
+  signInLocally: (name: string, email: string) => void;
 }
 
-// ─── Context ─────────────────────────────────────────────────────────────────
+// Default local clinician profile (100% DPDP compliant offline session)
+const DEFAULT_DOCTOR: DoctorSession = {
+  user: {
+    id: "local-doctor-001",
+    email: "dr.raman@verifact.local",
+    user_metadata: {
+      full_name: "Dr. Raman",
+    },
+  },
+  displayName: "Dr. Raman",
+  initials: "DR",
+};
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -30,69 +42,54 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function deriveDisplayName(user: User): string {
-  // Prefer full_name from user_metadata (set during sign-up)
-  const meta = user.user_metadata as Record<string, string> | undefined;
-  if (meta?.full_name) return meta.full_name;
-  if (meta?.name) return meta.name;
-  // Fall back to email prefix
-  return user.email?.split("@")[0] ?? "Doctor";
-}
-
-function deriveInitials(displayName: string): string {
-  const parts = displayName.trim().split(/\s+/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  }
-  return displayName.slice(0, 2).toUpperCase();
-}
-
-function buildDoctorSession(user: User, session: Session): DoctorSession {
-  const displayName = deriveDisplayName(user);
-  return {
-    user,
-    session,
-    displayName,
-    initials: deriveInitials(displayName),
-  };
-}
-
-// ─── Provider ─────────────────────────────────────────────────────────────────
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [doctor, setDoctor] = useState<DoctorSession | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Resolve the initial session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setDoctor(buildDoctorSession(session.user, session));
+    // Check localStorage for a custom local clinician session, or use DEFAULT_DOCTOR
+    const stored = localStorage.getItem("verifact_local_doctor");
+    if (stored) {
+      try {
+        setDoctor(JSON.parse(stored));
+      } catch {
+        setDoctor(DEFAULT_DOCTOR);
       }
-      setLoading(false);
-    });
-
-    // Subscribe to auth changes (login / logout / token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setDoctor(buildDoctorSession(session.user, session));
-      } else {
-        setDoctor(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    } else {
+      setDoctor(DEFAULT_DOCTOR);
+    }
+    setLoading(false);
   }, []);
 
   async function signOut() {
-    await supabase.auth.signOut();
+    localStorage.removeItem("verifact_local_doctor");
     setDoctor(null);
   }
 
+  function signInLocally(name: string, email: string) {
+    const initials = name
+      .trim()
+      .split(/\s+/)
+      .map((p) => p[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "DR";
+
+    const session: DoctorSession = {
+      user: {
+        id: `local-doc-${Date.now()}`,
+        email: email || "clinician@verifact.local",
+        user_metadata: { full_name: name || "Dr. Clinician" },
+      },
+      displayName: name || "Dr. Clinician",
+      initials,
+    };
+    localStorage.setItem("verifact_local_doctor", JSON.stringify(session));
+    setDoctor(session);
+  }
+
   return (
-    <AuthContext.Provider value={{ doctor, loading, signOut }}>
+    <AuthContext.Provider value={{ doctor, loading, signOut, signInLocally }}>
       {children}
     </AuthContext.Provider>
   );
