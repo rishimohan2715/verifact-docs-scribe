@@ -18,6 +18,8 @@ import {
   type TranscriptLine,
   type ICD10Code,
   type Prescription,
+  type ClinicalRiskAnalysis,
+  type DifferentialPinpoint,
 } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import {
@@ -28,16 +30,45 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { exportMarkdown, exportPdf } from "@/lib/export";
 import {
-  ChevronDown, ChevronRight, Lock, Play, Check, Download, FileText, FileType, Edit3,
-  Stethoscope, User, Sparkles, ArrowLeftRight, Pill, Tag, Plus, X, Search, ShieldAlert,
-  AlertTriangle, CheckCircle2, Award, Info, Activity, FlameKindling, Microscope, UserCheck, ActivitySquare
+  ChevronDown,
+  ChevronRight,
+  Lock,
+  Play,
+  Check,
+  Download,
+  FileText,
+  FileType,
+  Edit3,
+  Stethoscope,
+  User,
+  Sparkles,
+  ArrowLeftRight,
+  Pill,
+  Tag,
+  Plus,
+  X,
+  Search,
+  ShieldAlert,
+  AlertTriangle,
+  CheckCircle2,
+  Award,
+  Info,
+  Activity,
+  FlameKindling,
+  Microscope,
+  UserCheck,
+  ActivitySquare,
 } from "lucide-react";
 
 export const Route = createFileRoute("/notes/$noteId")({
   head: () => ({
     meta: [
       { title: "Review & Sign-Off — Verifact Local" },
-      { name: "description", content: "Review note, clinical risk alerts, differentials, ICD-10, and prescriptions, edit inline, then sign off." },
+      {
+        name: "description",
+        content:
+          "Review note, clinical risk alerts, differentials, ICD-10, and prescriptions, edit inline, then sign off.",
+      },
     ],
   }),
   component: ReviewScreen,
@@ -62,9 +93,9 @@ function ReviewScreen() {
   const { noteId } = Route.useParams();
   const { doctor } = useAuth();
   const doctorName = doctor?.displayName ?? "Dr. Raman";
-  
-  const [clinicalRisks, setClinicalRisks] = useState<any>(null);
-  const [differentials, setDifferentials] = useState<any[]>([]);
+
+  const [clinicalRisks, setClinicalRisks] = useState<ClinicalRiskAnalysis | null>(null);
+  const [differentials, setDifferentials] = useState<DifferentialPinpoint[]>([]);
   const [patientMeta, setPatientMeta] = useState<{ age?: number; pmh?: string }>({});
 
   useEffect(() => {
@@ -113,7 +144,11 @@ function ReviewScreen() {
       <>
         <TopBar title="Consultation Note" />
         <div className="p-8 text-sm text-muted-foreground">
-          Loading local consultation... <Link to="/" className="text-accent underline">Back to Dashboard</Link>.
+          Loading local consultation...{" "}
+          <Link to="/" className="text-accent underline">
+            Back to Dashboard
+          </Link>
+          .
         </div>
       </>
     );
@@ -130,7 +165,9 @@ function ReviewScreen() {
     } as const;
     const label = { draft: "Draft", pending: "Pending Review", signed: "Signed & Locked" }[s];
     return (
-      <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${map[s]}`}>
+      <span
+        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${map[s]}`}
+      >
         {s === "signed" && <Check className="h-3 w-3" />}
         {label}
       </span>
@@ -189,10 +226,7 @@ function ReviewScreen() {
 
   return (
     <>
-      <TopBar
-        title={`${note.patientName} · ${note.mrn}`}
-        extras={statusPill()}
-      />
+      <TopBar title={`${note.patientName} · ${note.mrn}`} extras={statusPill()} />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* LEFT: Diarized Transcript View */}
@@ -208,7 +242,11 @@ function ReviewScreen() {
                 className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted"
                 aria-label="Toggle transcript"
               >
-                {transcriptOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                {transcriptOpen ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
               </button>
               {transcriptOpen && (
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -277,7 +315,11 @@ function ReviewScreen() {
               </span>
               <span className="text-xs text-muted-foreground">·</span>
               <span className="text-xs text-muted-foreground">
-                Consultation {new Date(note.consultTime).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                Consultation{" "}
+                {new Date(note.consultTime).toLocaleString([], {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -298,10 +340,20 @@ function ReviewScreen() {
                   <ChevronDown className="h-3 w-3" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuItem onSelect={() => { exportPdf(note, doctorName); toast.success("Clinical PDF downloaded"); }}>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      exportPdf(note, doctorName);
+                      toast.success("Clinical PDF downloaded");
+                    }}
+                  >
                     <FileType className="mr-2 h-4 w-4" /> Download Clinical PDF
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => { exportMarkdown(note, doctorName); toast.success("Markdown downloaded"); }}>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      exportMarkdown(note, doctorName);
+                      toast.success("Markdown downloaded");
+                    }}
+                  >
                     <FileText className="mr-2 h-4 w-4" /> Download Markdown
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -322,7 +374,11 @@ function ReviewScreen() {
                 <div className="mt-2 flex items-center gap-4 font-sans text-xs text-muted-foreground">
                   <span>{note.type}</span>
                   <span>·</span>
-                  {patientMeta.age && <span>Age: <strong>{patientMeta.age} yrs</strong></span>}
+                  {patientMeta.age && (
+                    <span>
+                      Age: <strong>{patientMeta.age} yrs</strong>
+                    </span>
+                  )}
                   {patientMeta.pmh && (
                     <>
                       <span>·</span>
@@ -357,16 +413,23 @@ function ReviewScreen() {
 
                 {clinicalRisks?.alerts && clinicalRisks.alerts.length > 0 ? (
                   <div className="space-y-3">
-                    {clinicalRisks.alerts.map((alert: any, idx: number) => (
-                      <div key={idx} className="rounded-lg border border-amber-500/20 bg-background/80 p-3 text-xs">
+                    {clinicalRisks.alerts.map((alert, idx) => (
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-amber-500/20 bg-background/80 p-3 text-xs"
+                      >
                         <div className="flex items-center justify-between">
                           <span className="font-bold text-foreground flex items-center gap-1.5">
                             <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
                             {alert.title}
                           </span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            alert.severity === "HIGH" ? "bg-red-500/10 text-red-600" : "bg-amber-500/10 text-amber-600"
-                          }`}>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              alert.severity === "HIGH"
+                                ? "bg-red-500/10 text-red-600"
+                                : "bg-amber-500/10 text-amber-600"
+                            }`}
+                          >
                             {alert.severity} RISK
                           </span>
                         </div>
@@ -380,14 +443,18 @@ function ReviewScreen() {
                 ) : clinicalRisks ? (
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                    <span>No urgent clinical red flags detected. Transcript matches standard clinical documentation parameters.</span>
+                    <span>
+                      No urgent clinical red flags detected. Transcript matches standard clinical
+                      documentation parameters.
+                    </span>
                   </div>
                 ) : (
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
                     <span>
-                      Clinical risk analysis did not run for this note — the local backend returned no
-                      analysis. Absence of alerts here does <strong>not</strong> mean the consultation is low risk.
+                      Clinical risk analysis did not run for this note — the local backend returned
+                      no analysis. Absence of alerts here does <strong>not</strong> mean the
+                      consultation is low risk.
                     </span>
                   </div>
                 )}
@@ -410,17 +477,26 @@ function ReviewScreen() {
 
                   <div className="space-y-4">
                     {differentials.map((diff, idx) => (
-                      <div key={idx} className="rounded-lg border border-border bg-background p-4 text-xs">
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-border bg-background p-4 text-xs"
+                      >
                         <div className="flex items-center justify-between border-b border-border pb-2 mb-2.5">
                           <div className="flex items-center gap-1.5">
                             <span className="rounded bg-accent/15 px-2 py-0.5 font-bold text-accent font-mono text-[10px]">
                               {diff.icd10}
                             </span>
-                            <span className="font-semibold text-foreground text-sm">{diff.diagnosis}</span>
+                            <span className="font-semibold text-foreground text-sm">
+                              {diff.diagnosis}
+                            </span>
                           </div>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            diff.severity === "CRITICAL" ? "bg-red-500/10 text-red-600" : "bg-amber-500/10 text-amber-600"
-                          }`}>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              diff.severity === "CRITICAL"
+                                ? "bg-red-500/10 text-red-600"
+                                : "bg-amber-500/10 text-amber-600"
+                            }`}
+                          >
                             {diff.severity}
                           </span>
                         </div>
@@ -438,7 +514,8 @@ function ReviewScreen() {
                         {/* Evidence Quotes */}
                         <div className="mb-3">
                           <div className="font-bold text-muted-foreground flex items-center gap-1 mb-1">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Supporting Dialogue Evidence:
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Supporting
+                            Dialogue Evidence:
                           </div>
                           <ul className="list-disc pl-5 space-y-1 text-muted-foreground italic">
                             {diff.evidence.map((quote: string, qIdx: number) => (
@@ -450,11 +527,15 @@ function ReviewScreen() {
                         {/* Confirmatory Tests */}
                         <div>
                           <div className="font-bold text-muted-foreground flex items-center gap-1 mb-1">
-                            <Microscope className="h-3.5 w-3.5 text-blue-500" /> Suggested Confirmatory Tests:
+                            <Microscope className="h-3.5 w-3.5 text-blue-500" /> Suggested
+                            Confirmatory Tests:
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1.5 pl-1">
                             {diff.confirmatoryTests.map((test: string, tIdx: number) => (
-                              <div key={tIdx} className="rounded bg-muted/50 p-2 text-foreground flex items-start gap-1">
+                              <div
+                                key={tIdx}
+                                className="rounded bg-muted/50 p-2 text-foreground flex items-start gap-1"
+                              >
                                 <span className="text-accent font-bold">&middot;</span>
                                 <span>{test}</span>
                               </div>
@@ -533,16 +614,30 @@ function ReviewScreen() {
                 <div className="divide-y divide-border border rounded-lg overflow-hidden bg-background">
                   {note.prescriptions && note.prescriptions.length > 0 ? (
                     note.prescriptions.map((rx, idx) => (
-                      <div key={rx.id || idx} className="flex items-center justify-between p-3 text-xs">
+                      <div
+                        key={rx.id || idx}
+                        className="flex items-center justify-between p-3 text-xs"
+                      >
                         <div>
                           <div className="font-semibold text-foreground text-sm">
-                            {rx.name} <span className="text-muted-foreground font-normal">({rx.brand || "Generic"})</span>
+                            {rx.name}{" "}
+                            <span className="text-muted-foreground font-normal">
+                              ({rx.brand || "Generic"})
+                            </span>
                           </div>
                           <div className="mt-1 flex gap-3 text-muted-foreground">
-                            <span>Dose: <strong>{rx.dosage}</strong></span>
-                            <span>Freq: <strong>{rx.frequency}</strong></span>
-                            <span>Route: <strong>{rx.route}</strong></span>
-                            <span>Duration: <strong>{rx.duration}</strong></span>
+                            <span>
+                              Dose: <strong>{rx.dosage}</strong>
+                            </span>
+                            <span>
+                              Freq: <strong>{rx.frequency}</strong>
+                            </span>
+                            <span>
+                              Route: <strong>{rx.route}</strong>
+                            </span>
+                            <span>
+                              Duration: <strong>{rx.duration}</strong>
+                            </span>
                           </div>
                         </div>
                         {!isSigned && (
@@ -584,7 +679,10 @@ function ReviewScreen() {
                 <div className="flex items-center gap-2 text-sm">
                   <Lock className="h-4 w-4 text-accent" />
                   <span className="text-foreground">
-                    Reviewed & Signed in <span className="tabular-nums font-semibold">{fmt(note.reviewSeconds ?? 0)}</span>
+                    Reviewed & Signed in{" "}
+                    <span className="tabular-nums font-semibold">
+                      {fmt(note.reviewSeconds ?? 0)}
+                    </span>
                   </span>
                   <span className="text-muted-foreground">·</span>
                   <span className="text-muted-foreground">Clinician: {doctorName}</span>
@@ -607,7 +705,8 @@ function ReviewScreen() {
             ) : (
               <div className="flex items-center justify-between gap-3">
                 <div className="text-sm text-muted-foreground">
-                  Time-to-Review: <span className="tabular-nums font-semibold text-foreground">{fmt(elapsed)}</span>
+                  Time-to-Review:{" "}
+                  <span className="tabular-nums font-semibold text-foreground">{fmt(elapsed)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -670,7 +769,9 @@ function TranscriptBlock({
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(line.text);
 
-  useEffect(() => { setText(line.text); }, [line.text]);
+  useEffect(() => {
+    setText(line.text);
+  }, [line.text]);
 
   const toggleSpeaker = () => {
     if (locked) return;
@@ -698,7 +799,11 @@ function TranscriptBlock({
             }`}
             title="Click to toggle speaker between DOCTOR and PATIENT"
           >
-            {line.speaker === "DOCTOR" ? <Stethoscope className="h-3 w-3" /> : <User className="h-3 w-3" />}
+            {line.speaker === "DOCTOR" ? (
+              <Stethoscope className="h-3 w-3" />
+            ) : (
+              <User className="h-3 w-3" />
+            )}
             {line.speaker}
           </button>
           <span className="text-[10px] tabular-nums text-muted-foreground opacity-70">
@@ -726,13 +831,19 @@ function TranscriptBlock({
           />
           <div className="flex justify-end gap-2">
             <button
-              onClick={() => { setEditing(false); setText(line.text); }}
+              onClick={() => {
+                setEditing(false);
+                setText(line.text);
+              }}
               className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
             >
               Cancel
             </button>
             <button
-              onClick={() => { setEditing(false); onUpdate(line.speaker, text); }}
+              onClick={() => {
+                setEditing(false);
+                onUpdate(line.speaker, text);
+              }}
               className="rounded bg-accent px-3 py-1 text-xs font-medium text-accent-foreground"
             >
               Save
@@ -762,17 +873,16 @@ function SectionBlock({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
-  useEffect(() => { setDraft(value); }, [value]);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
 
   return (
     <section className="mb-6">
       <h3 className="mb-2 flex items-center gap-2 font-sans text-xs font-semibold uppercase tracking-widest text-muted-foreground">
         <span>{label}</span>
         {edited && (
-          <span
-            className="h-1.5 w-1.5 rounded-full bg-accent"
-            title="Edited by clinician"
-          />
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" title="Edited by clinician" />
         )}
       </h3>
       {editing && !locked ? (
@@ -791,7 +901,9 @@ function SectionBlock({
         <div
           onClick={() => !locked && setEditing(true)}
           className={`whitespace-pre-wrap rounded-md p-3.5 font-sans text-[15px] leading-relaxed text-foreground font-normal transition ${
-            locked ? "cursor-default" : "cursor-text hover:bg-muted/30 border border-transparent hover:border-border"
+            locked
+              ? "cursor-default"
+              : "cursor-text hover:bg-muted/30 border border-transparent hover:border-border"
           } ${edited ? "border-l-2 border-accent pl-3 bg-accent/5" : ""}`}
         >
           {value}
@@ -818,11 +930,23 @@ function Icd10SearchModal({
       .catch(() => {
         setCodes([
           { code: "R10.9", title: "Unspecified abdominal pain", category: "Gastrointestinal" },
-          { code: "R11.2", title: "Nausea with vomiting, unspecified", category: "Gastrointestinal" },
-          { code: "G51.0", title: "Bell's palsy / Facial nerve paralysis", category: "Neurological" },
-          { code: "R35.0", title: "Frequency of micturition (Polyuria)", category: "Genitourinary" },
+          {
+            code: "R11.2",
+            title: "Nausea with vomiting, unspecified",
+            category: "Gastrointestinal",
+          },
+          {
+            code: "G51.0",
+            title: "Bell's palsy / Facial nerve paralysis",
+            category: "Neurological",
+          },
+          {
+            code: "R35.0",
+            title: "Frequency of micturition (Polyuria)",
+            category: "Genitourinary",
+          },
           { code: "I50.9", title: "Heart failure, unspecified", category: "Cardiovascular" },
-          { code: "I10", title: "Essential hypertension", category: "Cardiovascular" }
+          { code: "I10", title: "Essential hypertension", category: "Cardiovascular" },
         ]);
       });
   }, [q]);
@@ -861,7 +985,9 @@ function Icd10SearchModal({
                 <span className="font-mono font-bold text-accent">{c.code}</span>
                 <span className="ml-2 font-medium text-foreground">{c.title}</span>
               </div>
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{c.category}</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                {c.category}
+              </span>
             </button>
           ))}
         </div>
@@ -912,7 +1038,9 @@ function PrescriptionModal({
         <form onSubmit={handleSubmit} className="mt-4 space-y-3 text-xs">
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block font-semibold text-muted-foreground uppercase">Generic Name</span>
+              <span className="mb-1 block font-semibold text-muted-foreground uppercase">
+                Generic Name
+              </span>
               <input
                 required
                 value={name}
@@ -922,7 +1050,9 @@ function PrescriptionModal({
               />
             </label>
             <label className="block">
-              <span className="mb-1 block font-semibold text-muted-foreground uppercase">Brand Name</span>
+              <span className="mb-1 block font-semibold text-muted-foreground uppercase">
+                Brand Name
+              </span>
               <input
                 value={brand}
                 onChange={(e) => setBrand(e.target.value)}
@@ -934,7 +1064,9 @@ function PrescriptionModal({
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block font-semibold text-muted-foreground uppercase">Dosage</span>
+              <span className="mb-1 block font-semibold text-muted-foreground uppercase">
+                Dosage
+              </span>
               <input
                 required
                 value={dosage}
@@ -944,7 +1076,9 @@ function PrescriptionModal({
               />
             </label>
             <label className="block">
-              <span className="mb-1 block font-semibold text-muted-foreground uppercase">Route</span>
+              <span className="mb-1 block font-semibold text-muted-foreground uppercase">
+                Route
+              </span>
               <select
                 value={route}
                 onChange={(e) => setRoute(e.target.value)}
@@ -961,7 +1095,9 @@ function PrescriptionModal({
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block font-semibold text-muted-foreground uppercase">Frequency</span>
+              <span className="mb-1 block font-semibold text-muted-foreground uppercase">
+                Frequency
+              </span>
               <input
                 required
                 value={frequency}
@@ -971,7 +1107,9 @@ function PrescriptionModal({
               />
             </label>
             <label className="block">
-              <span className="mb-1 block font-semibold text-muted-foreground uppercase">Duration</span>
+              <span className="mb-1 block font-semibold text-muted-foreground uppercase">
+                Duration
+              </span>
               <input
                 required
                 value={duration}

@@ -1,6 +1,5 @@
 import os
 import json
-import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, status, Query
@@ -12,6 +11,7 @@ from sqlalchemy.orm import Session
 from database import engine, Base, get_db, ensure_schema_current, STORAGE_DIR
 from models import Consultation, Transcript, ClinicalNote, AuditLog
 from services.transcription import transcribe_audio
+from services.audio import generate_audio_filename
 from services.redaction import redact_pii
 from services.llm import generate_clinical_note, generate_clinical_note_fast
 from services.medical_knowledge import (
@@ -222,13 +222,7 @@ async def transcribe_endpoint(
     whisper_model: str = Form("base"),
     db: Session = Depends(get_db)
 ):
-    ext = "webm"
-    if file and file.filename:
-        _, orig_ext = os.path.splitext(file.filename)
-        if orig_ext:
-            ext = orig_ext.lstrip(".")
-
-    saved_filename = f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.{ext}"
+    saved_filename = generate_audio_filename(file.filename if file else None)
     audio_path = os.path.join(STORAGE_DIR, saved_filename)
 
     if file:

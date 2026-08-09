@@ -37,6 +37,32 @@ export interface Prescription {
   indication?: string;
 }
 
+// Shapes returned by backend/services/clinical_rules.py and backend/services/differential.py
+export interface ClinicalRiskAlert {
+  severity: "HIGH" | "MEDIUM";
+  category: string;
+  title: string;
+  description: string;
+  recommendedAction: string;
+  evidenceQuote: string;
+}
+
+export interface ClinicalRiskAnalysis {
+  qualityScore: number;
+  qualityRating: string;
+  alerts: ClinicalRiskAlert[];
+  totalAlertsCount: number;
+}
+
+export interface DifferentialPinpoint {
+  diagnosis: string;
+  icd10: string;
+  pathophysiology: string;
+  evidence: string[];
+  confirmatoryTests: string[];
+  severity: "CRITICAL" | "HIGH" | "MEDIUM";
+}
+
 export interface Note {
   id: string;
   patientName: string;
@@ -109,7 +135,7 @@ export function editSection(id: string, key: keyof NoteSections, value: string) 
       editedFields: { ...n.editedFields, [key]: true },
       editsCount: wasEdited ? n.editsCount : n.editsCount + 1,
     };
-    
+
     saveConsultationSectionToBackend(id, updatedNote.sections);
     return updatedNote;
   });
@@ -153,7 +179,12 @@ export function removePrescription(id: string, rxId: string) {
   });
 }
 
-export function editTranscriptLine(id: string, index: number, speaker: "DOCTOR" | "PATIENT", text: string) {
+export function editTranscriptLine(
+  id: string,
+  index: number,
+  speaker: "DOCTOR" | "PATIENT",
+  text: string,
+) {
   updateNote(id, (n) => {
     const updatedTranscript = [...n.transcript];
     updatedTranscript[index] = { ...updatedTranscript[index], speaker, text };
@@ -213,16 +244,35 @@ export async function fetchAndUpsertConsultation(consultationId: string) {
       type: (data.type as NoteType) ?? "Discharge Summary",
       status: (data.status as NoteStatus) ?? "pending",
       sections: data.sections ?? {
-        chiefComplaint: "", hpi: "", examination: "", diagnosis: "", treatment: "", followUp: ""
+        chiefComplaint: "",
+        hpi: "",
+        examination: "",
+        diagnosis: "",
+        treatment: "",
+        followUp: "",
       },
       icd10Codes: data.icd10Codes ?? [
         { code: "R10.9", title: "Unspecified abdominal pain", category: "Gastrointestinal" },
         { code: "R11.2", title: "Nausea with vomiting, unspecified", category: "Gastrointestinal" },
-        { code: "G51.0", title: "Bell's palsy / Facial nerve paralysis", category: "Neurological" }
+        { code: "G51.0", title: "Bell's palsy / Facial nerve paralysis", category: "Neurological" },
       ],
       prescriptions: data.prescriptions ?? [
-        { name: "Ondansetron", brand: "Vomikind", dosage: "4 mg", frequency: "TDS", route: "Oral", duration: "5 days" },
-        { name: "Pantoprazole", brand: "Pan 40", dosage: "40 mg", frequency: "OD (Before meals)", route: "Oral", duration: "14 days" }
+        {
+          name: "Ondansetron",
+          brand: "Vomikind",
+          dosage: "4 mg",
+          frequency: "TDS",
+          route: "Oral",
+          duration: "5 days",
+        },
+        {
+          name: "Pantoprazole",
+          brand: "Pan 40",
+          dosage: "40 mg",
+          frequency: "OD (Before meals)",
+          route: "Oral",
+          duration: "14 days",
+        },
       ],
       editedFields: {},
       editsCount: data.editsCount ?? 0,
