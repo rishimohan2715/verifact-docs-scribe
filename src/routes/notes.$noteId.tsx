@@ -12,11 +12,14 @@ import {
   fetchAndUpsertConsultation,
   addIcd10Code,
   removeIcd10Code,
+  addSnomedCode,
+  removeSnomedCode,
   addPrescription,
   removePrescription,
   type NoteSections,
   type TranscriptLine,
   type ICD10Code,
+  type SnomedCode,
   type Prescription,
   type ClinicalRiskAnalysis,
   type DifferentialPinpoint,
@@ -124,6 +127,7 @@ function ReviewScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [showIcd10Modal, setShowIcd10Modal] = useState(false);
+  const [showSnomedModal, setShowSnomedModal] = useState(false);
   const [showRxModal, setShowRxModal] = useState(false);
   const startRef = useRef<number>(Date.now());
   const finalRef = useRef<number | null>(null);
@@ -195,18 +199,34 @@ function ReviewScreen() {
           ...n,
           sections: data.sections,
           icd10Codes: data.icd10_codes || n.icd10Codes,
+          snomedCodes: data.snomed_codes || n.snomedCodes,
           prescriptions: data.prescriptions || n.prescriptions,
           editsCount: n.editsCount + 1,
+          generationStatus: data.generationStatus,
+          llmModel: data.llm_model,
         }));
         if (data.clinical_risk_analysis) setClinicalRisks(data.clinical_risk_analysis);
         if (data.differential_pinpoints) setDifferentials(data.differential_pinpoints);
-        toast.success(`Report regenerated using local ${data.llm_model || "LLM"}!`);
+        if (data.generationStatus === "success") {
+          toast.success(`Report regenerated using local ${data.llm_model || "LLM"}!`);
+        } else {
+          toast.warning(
+            "Local AI model was unavailable — report was auto-extracted from the transcript instead. Every section needs review.",
+          );
+        }
       } else {
-        throw new Error("Local backend error");
+        const detail = await res.text().catch(() => "");
+        throw new Error(
+          `Local backend returned ${res.status}${detail ? `: ${detail.slice(0, 200)}` : ""}`,
+        );
       }
     } catch (err) {
-      console.warn("Regeneration error fallback:", err);
-      toast.success("Clinical report updated based on current transcript!");
+      console.error("Regeneration failed:", err);
+      toast.error(
+        err instanceof Error
+          ? `Regeneration failed: ${err.message}`
+          : "Regeneration failed — the report was not changed.",
+      );
     } finally {
       setIsRegenerating(false);
     }
@@ -391,6 +411,19 @@ function ReviewScreen() {
                 </div>
               </div>
 
+              {/* PROVENANCE BANNER: only shown when the note was NOT LLM-generated */}
+              {note.generationStatus && note.generationStatus !== "success" && (
+                <div className="mb-6 flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3.5 text-xs">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                  <div className="text-amber-900 dark:text-amber-200">
+                    <strong>Auto-extracted note — not written by the local AI model.</strong>{" "}
+                    {note.generationStatus === "extracted_fallback"
+                      ? "The local Ollama model was unavailable when this note was generated, so every section below was pulled directly from the transcript's own sentences. Diagnosis, treatment, and follow-up were intentionally left blank for the clinician to complete."
+                      : "This is a synthetic demo case generated for testing — sections were extracted directly from the scripted transcript, not drafted by the AI model."}
+                  </div>
+                </div>
+              )}
+
               {/* CLINICAL DECISION SUPPORT & RISK ALERTS BANNER */}
               <div className="mb-8 rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 shadow-sm">
                 <div className="flex items-center justify-between border-b border-amber-500/20 pb-3 mb-3">
@@ -427,7 +460,9 @@ function ReviewScreen() {
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                               alert.severity === "HIGH"
                                 ? "bg-red-500/10 text-red-600"
-                                : "bg-amber-500/10 text-amber-600"
+                                : alert.severity === "MEDIUM"
+                                  ? "bg-amber-500/10 text-amber-600"
+                                  : "bg-blue-500/10 text-blue-600"
                             }`}
                           >
                             {alert.severity} RISK
@@ -492,9 +527,11 @@ function ReviewScreen() {
                           </div>
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              diff.severity === "CRITICAL"
+                              diff.severity === "CRITICAL" || diff.severity === "HIGH"
                                 ? "bg-red-500/10 text-red-600"
-                                : "bg-amber-500/10 text-amber-600"
+                                : diff.severity === "MEDIUM"
+                                  ? "bg-amber-500/10 text-amber-600"
+                                  : "bg-blue-500/10 text-blue-600"
                             }`}
                           >
                             {diff.severity}
@@ -588,6 +625,55 @@ function ReviewScreen() {
                     ))
                   ) : (
                     <p className="text-xs text-muted-foreground">No ICD-10 codes attached yet.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* SNOMED CT CODES SECTION */}
+              <div className="mb-8 rounded-xl border border-border bg-card p-5 shadow-sm">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-accent" />
+                    <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                      Attached SNOMED CT Codes
+                    </h3>
+                  </div>
+                  {!isSigned && (
+                    <button
+                      onClick={() => setShowSnomedModal(true)}
+                      className="inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-1 text-xs font-semibold text-accent hover:bg-accent/20"
+                    >
+                      <Plus className="h-3 w-3" /> Add Code
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {note.snomedCodes && note.snomedCodes.length > 0 ? (
+                    note.snomedCodes.map((c) => (
+                      <span
+                        key={c.conceptId}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-accent/30 bg-accent/5 px-2.5 py-1.5 text-xs font-medium text-foreground"
+                      >
+                        <span className="font-mono font-bold text-accent">{c.conceptId}</span>
+                        <span>·</span>
+                        <span>{c.term}</span>
+                        {c.icd10Map && (
+                          <span className="text-muted-foreground">(ICD-10: {c.icd10Map})</span>
+                        )}
+                        {!isSigned && (
+                          <button
+                            onClick={() => removeSnomedCode(note.id, c.conceptId)}
+                            className="ml-1 text-muted-foreground hover:text-destructive"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </span>
+                    ))
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      No SNOMED CT codes attached yet.
+                    </p>
                   )}
                 </div>
               </div>
@@ -736,6 +822,18 @@ function ReviewScreen() {
             addIcd10Code(note.id, c);
             setShowIcd10Modal(false);
             toast.success(`Attached ICD-10: ${c.code} - ${c.title}`);
+          }}
+        />
+      )}
+
+      {/* SNOMED CT SEARCH MODAL */}
+      {showSnomedModal && (
+        <SnomedSearchModal
+          onClose={() => setShowSnomedModal(false)}
+          onSelect={(c) => {
+            addSnomedCode(note.id, c);
+            setShowSnomedModal(false);
+            toast.success(`Attached SNOMED CT: ${c.conceptId} - ${c.term}`);
           }}
         />
       )}
@@ -984,6 +1082,84 @@ function Icd10SearchModal({
               <div>
                 <span className="font-mono font-bold text-accent">{c.code}</span>
                 <span className="ml-2 font-medium text-foreground">{c.title}</span>
+              </div>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                {c.category}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SnomedSearchModal({
+  onClose,
+  onSelect,
+}: {
+  onClose: () => void;
+  onSelect: (code: SnomedCode) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [codes, setCodes] = useState<SnomedCode[]>([]);
+
+  useEffect(() => {
+    fetch(`http://localhost:8000/api/snomed?q=${encodeURIComponent(q)}`)
+      .then((res) => res.json())
+      .then((data) =>
+        setCodes(
+          data.map(
+            (item: {
+              conceptId: string;
+              preferredTerm: string;
+              category: string;
+              icd10Map?: string;
+            }) => ({
+              conceptId: item.conceptId,
+              term: item.preferredTerm,
+              category: item.category,
+              icd10Map: item.icd10Map,
+            }),
+          ),
+        ),
+      )
+      .catch(() => setCodes([]));
+  }, [q]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-xl">
+        <div className="flex items-center justify-between pb-3 border-b border-border">
+          <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
+            <Tag className="h-4 w-4 text-accent" /> Search & Attach SNOMED CT Codes
+          </h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="my-4 relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search by concept, term or symptom (e.g., asthma, reflux, dizziness)..."
+            className="w-full rounded-lg border border-input bg-background py-2.5 pl-9 pr-3 text-xs outline-none focus:border-accent"
+          />
+        </div>
+
+        <div className="max-h-60 overflow-y-auto divide-y divide-border border rounded-lg bg-background">
+          {codes.map((c) => (
+            <button
+              key={c.conceptId}
+              onClick={() => onSelect(c)}
+              className="w-full text-left p-3 hover:bg-muted/40 transition flex items-center justify-between text-xs"
+            >
+              <div>
+                <span className="font-mono font-bold text-accent">{c.conceptId}</span>
+                <span className="ml-2 font-medium text-foreground">{c.term}</span>
               </div>
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
                 {c.category}

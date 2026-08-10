@@ -26,6 +26,13 @@ export interface ICD10Code {
   category: string;
 }
 
+export interface SnomedCode {
+  conceptId: string;
+  term: string;
+  category: string;
+  icd10Map?: string;
+}
+
 export interface Prescription {
   id?: string;
   name: string;
@@ -39,7 +46,7 @@ export interface Prescription {
 
 // Shapes returned by backend/services/clinical_rules.py and backend/services/differential.py
 export interface ClinicalRiskAlert {
-  severity: "HIGH" | "MEDIUM";
+  severity: "HIGH" | "MEDIUM" | "LOW";
   category: string;
   title: string;
   description: string;
@@ -60,7 +67,7 @@ export interface DifferentialPinpoint {
   pathophysiology: string;
   evidence: string[];
   confirmatoryTests: string[];
-  severity: "CRITICAL" | "HIGH" | "MEDIUM";
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 }
 
 export interface Note {
@@ -72,12 +79,16 @@ export interface Note {
   status: NoteStatus;
   sections: NoteSections;
   icd10Codes: ICD10Code[];
+  snomedCodes: SnomedCode[];
   prescriptions: Prescription[];
   editedFields: Partial<Record<keyof NoteSections, boolean>>;
   editsCount: number;
   transcript: TranscriptLine[];
   reviewSeconds?: number;
   signedAt?: string;
+  // "success" (LLM-generated) | "extracted_fallback" (LLM unavailable) | "demo_fast_extract" (synthetic demo case)
+  generationStatus?: string;
+  llmModel?: string;
 }
 
 type State = { notes: Note[] };
@@ -156,6 +167,25 @@ export function removeIcd10Code(id: string, codeStr: string) {
     const next = n.icd10Codes.filter((c) => c.code !== codeStr);
     const updated = { ...n, icd10Codes: next };
     saveICD10ToBackend(id, next);
+    return updated;
+  });
+}
+
+export function addSnomedCode(id: string, code: SnomedCode) {
+  updateNote(id, (n) => {
+    if (n.snomedCodes.some((c) => c.conceptId === code.conceptId)) return n;
+    const next = [...n.snomedCodes, code];
+    const updated = { ...n, snomedCodes: next, editsCount: n.editsCount + 1 };
+    saveSnomedToBackend(id, next);
+    return updated;
+  });
+}
+
+export function removeSnomedCode(id: string, conceptId: string) {
+  updateNote(id, (n) => {
+    const next = n.snomedCodes.filter((c) => c.conceptId !== conceptId);
+    const updated = { ...n, snomedCodes: next };
+    saveSnomedToBackend(id, next);
     return updated;
   });
 }
@@ -256,6 +286,7 @@ export async function fetchAndUpsertConsultation(consultationId: string) {
         { code: "R11.2", title: "Nausea with vomiting, unspecified", category: "Gastrointestinal" },
         { code: "G51.0", title: "Bell's palsy / Facial nerve paralysis", category: "Neurological" },
       ],
+      snomedCodes: data.snomedCodes ?? [],
       prescriptions: data.prescriptions ?? [
         {
           name: "Ondansetron",
@@ -279,6 +310,8 @@ export async function fetchAndUpsertConsultation(consultationId: string) {
       transcript: data.transcript ?? [],
       reviewSeconds: data.reviewSeconds ?? 0,
       signedAt: data.signedAt,
+      generationStatus: data.generationStatus,
+      llmModel: data.llmModel,
     };
 
     upsertNote(noteData);
@@ -309,6 +342,18 @@ async function saveICD10ToBackend(id: string, icd10_codes: ICD10Code[]) {
     });
   } catch (err) {
     console.warn("Failed to persist ICD-10 codes to local backend", err);
+  }
+}
+
+async function saveSnomedToBackend(id: string, snomed_codes: SnomedCode[]) {
+  try {
+    await fetch(`${BACKEND_URL}/consultations/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ snomed_codes }),
+    });
+  } catch (err) {
+    console.warn("Failed to persist SNOMED codes to local backend", err);
   }
 }
 

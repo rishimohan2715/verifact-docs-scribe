@@ -358,11 +358,14 @@ function NewConsultation() {
           followUp: "",
         },
         icd10Codes: data.icd10_codes ?? [],
+        snomedCodes: data.snomed_codes ?? [],
         prescriptions: data.prescriptions ?? [],
         editedFields: {},
         editsCount: 0,
         transcript: data.segments ?? [],
         reviewSeconds: 0,
+        generationStatus: data.note?.generationStatus,
+        llmModel: data.note?.llm_model,
       };
 
       upsertNote(noteData);
@@ -628,6 +631,7 @@ function NewConsultation() {
         status: "pending" as const,
         sections: selected.sections,
         icd10Codes: selected.icd10Codes,
+        snomedCodes: [],
         prescriptions: selected.prescriptions,
         editedFields: {},
         editsCount: 0,
@@ -686,6 +690,7 @@ function NewConsultation() {
           category: "Cardiovascular",
         },
       ],
+      snomedCodes: [],
       prescriptions: [
         {
           name: "Furosemide",
@@ -776,11 +781,14 @@ function NewConsultation() {
           followUp: "",
         },
         icd10Codes: data.icd10_codes ?? [],
+        snomedCodes: data.snomed_codes ?? [],
         prescriptions: data.prescriptions ?? [],
         editedFields: {},
         editsCount: 0,
         transcript: data.segments ?? [],
         reviewSeconds: 0,
+        generationStatus: data.note?.generationStatus,
+        llmModel: data.note?.llm_model,
       };
 
       upsertNote(noteData);

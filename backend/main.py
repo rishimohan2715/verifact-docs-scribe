@@ -17,8 +17,10 @@ from services.llm import generate_clinical_note, generate_clinical_note_fast
 from services.medical_knowledge import (
     load_icd10_dataset,
     load_medications_dataset,
+    load_snomed_dataset,
     auto_match_icd10_codes,
-    auto_suggest_prescriptions
+    auto_suggest_prescriptions,
+    auto_match_snomed_codes
 )
 from services.clinical_rules import analyze_clinical_risks
 from services.differential import generate_differential_details
@@ -57,6 +59,7 @@ class UpdateConsultationRequest(BaseModel):
     status: Optional[str] = None
     icd10_codes: Optional[List[Dict[str, Any]]] = None
     prescriptions: Optional[List[Dict[str, Any]]] = None
+    snomed_codes: Optional[List[Dict[str, Any]]] = None
 
 class SignNoteRequest(BaseModel):
     review_seconds: int
@@ -68,6 +71,28 @@ class MergeSegmentsRequest(BaseModel):
 class SplitSegmentRequest(BaseModel):
     segment_index: int
     split_character_index: int
+
+def _resolve_risk_and_differentials(note_result: Dict[str, Any], full_transcript: str) -> tuple:
+    """
+    Uses the LLM-grounded, quote-verified riskAlerts/differentials when the LLM path
+    succeeded; otherwise falls back to the rule-based detectors (which now extract real
+    transcript sentences as evidence rather than canned quotes).
+    """
+    diagnosis_text = note_result["sections"].get("diagnosis", "")
+    if note_result.get("status") == "success":
+        risk_analysis = {
+            "qualityScore": 100 if note_result.get("riskAlerts") else 90,
+            "qualityRating": "Excellent Clinical Quality",
+            "alerts": note_result.get("riskAlerts", []),
+            "totalAlertsCount": len(note_result.get("riskAlerts", []))
+        }
+        differentials = note_result.get("differentials", [])
+        return risk_analysis, differentials
+
+    risk_analysis = analyze_clinical_risks(full_transcript, diagnosis_text)
+    differentials = generate_differential_details(full_transcript, diagnosis_text)
+    return risk_analysis, differentials
+
 
 # ─── API Endpoints ────────────────────────────────────────────────────────────
 
@@ -99,6 +124,20 @@ def get_icd10_codes(q: Optional[str] = None):
         item for item in dataset
         if q_lower in item["code"].lower()
         or q_lower in item["title"].lower()
+        or any(q_lower in kw for kw in item.get("keywords", []))
+    ]
+
+
+@app.get("/api/snomed")
+def get_snomed_codes(q: Optional[str] = None):
+    dataset = load_snomed_dataset()
+    if not q:
+        return dataset
+    q_lower = q.lower().strip()
+    return [
+        item for item in dataset
+        if q_lower in item["conceptId"].lower()
+        or q_lower in item["preferredTerm"].lower()
         or any(q_lower in kw for kw in item.get("keywords", []))
     ]
 
@@ -157,9 +196,9 @@ def generate_random_case_endpoint(db: Session = Depends(get_db)):
     note_result = generate_clinical_note_fast(redacted_transcript, template_config)
 
     matched_icd10 = auto_match_icd10_codes(full_transcript, note_result["sections"].get("diagnosis", ""))
+    matched_snomed = auto_match_snomed_codes(full_transcript, note_result["sections"].get("diagnosis", ""))
     suggested_prescriptions = auto_suggest_prescriptions(full_transcript, note_result["sections"].get("diagnosis", ""))
-    clinical_risk_analysis = analyze_clinical_risks(full_transcript, note_result["sections"].get("diagnosis", ""))
-    differentials = generate_differential_details(full_transcript, note_result["sections"].get("diagnosis", ""))
+    clinical_risk_analysis, differentials = _resolve_risk_and_differentials(note_result, full_transcript)
 
     clinical_note = ClinicalNote(
         consultation_id=consultation.id,
@@ -168,6 +207,11 @@ def generate_random_case_endpoint(db: Session = Depends(get_db)):
         generated_text=note_result["structured_note"],
         sections_json=json.dumps(note_result["sections"]),
         raw_generated_sections_json=json.dumps(note_result["sections"]),
+        snomed_json=json.dumps(matched_snomed),
+        risk_analysis_json=json.dumps(clinical_risk_analysis),
+        differentials_json=json.dumps(differentials),
+        generation_status=note_result.get("status"),
+        llm_model_used=note_result.get("llm_model"),
         status="review"
     )
     db.add(clinical_note)
@@ -199,6 +243,7 @@ def generate_random_case_endpoint(db: Session = Depends(get_db)):
         "redacted_transcript": redacted_transcript,
         "segments": segments,
         "icd10_codes": matched_icd10,
+        "snomed_codes": matched_snomed,
         "prescriptions": suggested_prescriptions,
         "clinical_risk_analysis": clinical_risk_analysis,
         "differential_pinpoints": differentials,
@@ -207,7 +252,8 @@ def generate_random_case_endpoint(db: Session = Depends(get_db)):
             "sections": note_result["sections"],
             "structured_note": note_result["structured_note"],
             "llm_model": note_result.get("llm_model"),
-            "prompt_version": note_result.get("prompt_version")
+            "prompt_version": note_result.get("prompt_version"),
+            "generationStatus": note_result.get("status")
         }
     }
 
@@ -269,9 +315,9 @@ async def transcribe_endpoint(
     note_result = generate_clinical_note(redacted_transcript, template_config)
 
     matched_icd10 = auto_match_icd10_codes(full_transcript, note_result["sections"].get("diagnosis", ""))
+    matched_snomed = auto_match_snomed_codes(full_transcript, note_result["sections"].get("diagnosis", ""))
     suggested_prescriptions = auto_suggest_prescriptions(full_transcript, note_result["sections"].get("diagnosis", ""))
-    clinical_risk_analysis = analyze_clinical_risks(full_transcript, note_result["sections"].get("diagnosis", ""))
-    differentials = generate_differential_details(full_transcript, note_result["sections"].get("diagnosis", ""))
+    clinical_risk_analysis, differentials = _resolve_risk_and_differentials(note_result, full_transcript)
 
     clinical_note = ClinicalNote(
         consultation_id=consultation.id,
@@ -280,6 +326,11 @@ async def transcribe_endpoint(
         generated_text=note_result["structured_note"],
         sections_json=json.dumps(note_result["sections"]),
         raw_generated_sections_json=json.dumps(note_result["sections"]),
+        snomed_json=json.dumps(matched_snomed),
+        risk_analysis_json=json.dumps(clinical_risk_analysis),
+        differentials_json=json.dumps(differentials),
+        generation_status=note_result.get("status"),
+        llm_model_used=note_result.get("llm_model"),
         status="review"
     )
     db.add(clinical_note)
@@ -307,6 +358,7 @@ async def transcribe_endpoint(
         "redacted_transcript": redacted_transcript,
         "segments": segments,
         "icd10_codes": matched_icd10,
+        "snomed_codes": matched_snomed,
         "prescriptions": suggested_prescriptions,
         "clinical_risk_analysis": clinical_risk_analysis,
         "differential_pinpoints": differentials,
@@ -315,8 +367,71 @@ async def transcribe_endpoint(
             "sections": note_result["sections"],
             "structured_note": note_result["structured_note"],
             "llm_model": note_result.get("llm_model"),
-            "prompt_version": note_result.get("prompt_version")
+            "prompt_version": note_result.get("prompt_version"),
+            "generationStatus": note_result.get("status")
         }
+    }
+
+
+@app.post("/api/generate-note")
+def generate_note_endpoint(req: NoteGenerationRequest, db: Session = Depends(get_db)):
+    """
+    Re-runs note/risk/differential/coding generation against a consultation's existing
+    transcript — used by the "Regenerate Report" button. Always re-redacts the raw
+    transcript before generation and persists the result the same way /api/transcribe does.
+    """
+    c = db.query(Consultation).filter(Consultation.id == req.consultation_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Consultation not found")
+
+    t = db.query(Transcript).filter(Transcript.consultation_id == req.consultation_id).first()
+    if not t or not t.raw_text:
+        raise HTTPException(status_code=400, detail="No transcript available to regenerate from")
+
+    full_transcript = t.raw_text
+    redacted_transcript, _ = redact_pii(full_transcript)
+
+    note_result = generate_clinical_note(redacted_transcript, {})
+
+    matched_icd10 = auto_match_icd10_codes(full_transcript, note_result["sections"].get("diagnosis", ""))
+    matched_snomed = auto_match_snomed_codes(full_transcript, note_result["sections"].get("diagnosis", ""))
+    suggested_prescriptions = auto_suggest_prescriptions(full_transcript, note_result["sections"].get("diagnosis", ""))
+    clinical_risk_analysis, differentials = _resolve_risk_and_differentials(note_result, full_transcript)
+
+    n = db.query(ClinicalNote).filter(ClinicalNote.consultation_id == req.consultation_id).first()
+    if not n:
+        n = ClinicalNote(consultation_id=req.consultation_id, template_used=req.template_id or "cura-discharge.json")
+        db.add(n)
+
+    n.sections_json = json.dumps(note_result["sections"])
+    n.generated_text = note_result["structured_note"]
+    n.snomed_json = json.dumps(matched_snomed)
+    n.risk_analysis_json = json.dumps(clinical_risk_analysis)
+    n.differentials_json = json.dumps(differentials)
+    n.generation_status = note_result.get("status")
+    n.llm_model_used = note_result.get("llm_model")
+    n.edit_count += 1
+    n.updated_at = datetime.utcnow()
+
+    db.add(AuditLog(
+        consultation_id=req.consultation_id,
+        field_name="sections",
+        old_value="",
+        new_value="Regenerated via local LLM/extractive pipeline",
+        action_type="REGENERATE"
+    ))
+
+    db.commit()
+
+    return {
+        "sections": note_result["sections"],
+        "icd10_codes": matched_icd10,
+        "snomed_codes": matched_snomed,
+        "prescriptions": suggested_prescriptions,
+        "clinical_risk_analysis": clinical_risk_analysis,
+        "differential_pinpoints": differentials,
+        "llm_model": note_result.get("llm_model"),
+        "generationStatus": note_result.get("status")
     }
 
 
@@ -407,6 +522,18 @@ def update_consultation(
                 action_type="EDIT"
             ))
 
+    if req.snomed_codes is not None:
+        n = db.query(ClinicalNote).filter(ClinicalNote.consultation_id == consultation_id).first()
+        if n:
+            n.snomed_json = json.dumps(req.snomed_codes)
+            db.add(AuditLog(
+                consultation_id=consultation_id,
+                field_name="snomed_codes",
+                old_value="",
+                new_value=json.dumps(req.snomed_codes)[:200],
+                action_type="EDIT"
+            ))
+
     db.commit()
     return {"status": "success", "consultation_id": consultation_id}
 
@@ -485,9 +612,21 @@ def get_consultation(consultation_id: str, db: Session = Depends(get_db)):
 
     raw_text = t.raw_text if t else ""
     matched_icd10 = json.loads(n.icd10_json) if (n and n.icd10_json) else auto_match_icd10_codes(raw_text, sections.get("diagnosis", ""))
+    matched_snomed = json.loads(n.snomed_json) if (n and n.snomed_json) else auto_match_snomed_codes(raw_text, sections.get("diagnosis", ""))
     suggested_prescriptions = json.loads(n.prescriptions_json) if (n and n.prescriptions_json) else auto_suggest_prescriptions(raw_text, sections.get("diagnosis", ""))
-    clinical_risk_analysis = analyze_clinical_risks(raw_text, sections.get("diagnosis", ""))
-    differentials = generate_differential_details(raw_text, sections.get("diagnosis", ""))
+
+    # Prefer the risk/differential analysis persisted at generation time (which may be the
+    # LLM-grounded, quote-verified result) over recomputing the rule-based fallback fresh —
+    # recomputing here would silently discard a real LLM analysis every time the note is viewed.
+    if n and n.risk_analysis_json:
+        clinical_risk_analysis = json.loads(n.risk_analysis_json)
+    else:
+        clinical_risk_analysis = analyze_clinical_risks(raw_text, sections.get("diagnosis", ""))
+
+    if n and n.differentials_json:
+        differentials = json.loads(n.differentials_json)
+    else:
+        differentials = generate_differential_details(raw_text, sections.get("diagnosis", ""))
 
     return {
         "id": c.id,
@@ -501,9 +640,12 @@ def get_consultation(consultation_id: str, db: Session = Depends(get_db)):
         "transcript": segments,
         "sections": sections,
         "icd10Codes": matched_icd10,
+        "snomedCodes": matched_snomed,
         "prescriptions": suggested_prescriptions,
         "clinicalRiskAnalysis": clinical_risk_analysis,
         "differentialPinpoints": differentials,
+        "generationStatus": n.generation_status if n else None,
+        "llmModel": n.llm_model_used if n else None,
         "editsCount": n.edit_count if n else 0,
         "editedFields": {}
     }

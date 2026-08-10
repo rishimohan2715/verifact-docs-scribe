@@ -50,7 +50,14 @@ class ClinicalNote(Base):
     raw_generated_sections_json = Column(Text, nullable=True)   # Original LLM sections
     icd10_json = Column(Text, nullable=True)                     # Persistent ICD-10 codes
     prescriptions_json = Column(Text, nullable=True)              # Persistent Prescriptions
-    
+    snomed_json = Column(Text, nullable=True)                     # Persistent SNOMED CT codes
+    risk_analysis_json = Column(Text, nullable=True)               # Persistent clinical risk alerts
+    differentials_json = Column(Text, nullable=True)               # Persistent differential diagnoses
+
+    # Provenance: was this note LLM-generated or extracted via the no-Ollama fallback?
+    generation_status = Column(String, nullable=True)              # "success" | "extracted_fallback"
+    llm_model_used = Column(String, nullable=True)
+
     status = Column(String, nullable=False, default="draft")
     edit_count = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)

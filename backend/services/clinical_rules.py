@@ -1,13 +1,26 @@
-import re
 import logging
 from typing import List, Dict, Any
+from services.text_extraction import find_sentences_containing
 
 logger = logging.getLogger(__name__)
+
+_NO_SENTENCE_FALLBACK = "Keyword match found in transcript; no single sentence could be isolated as evidence."
+
+
+def _evidence_quote(transcript: str, keywords: List[str]) -> str:
+    matches = find_sentences_containing(transcript, keywords, max_results=1)
+    return matches[0] if matches else _NO_SENTENCE_FALLBACK
+
 
 def analyze_clinical_risks(transcript: str, diagnosis_text: str) -> Dict[str, Any]:
     """
     Analyzes the consultation transcript and Ollama diagnosis to detect urgent clinical red flags,
     diagnostic risks, and clinical decision support recommendations for the doctor.
+
+    This is the rule-based fallback used only when the LLM-driven analysis in services.llm is
+    unavailable. Every evidenceQuote below is extracted from the actual transcript passed in —
+    never a hardcoded string — so what's shown to the clinician is always something the patient
+    or doctor actually said, not a canned line copied from the demo-case generator.
     """
     t_lower = transcript.lower()
     d_lower = diagnosis_text.lower()
@@ -15,80 +28,87 @@ def analyze_clinical_risks(transcript: str, diagnosis_text: str) -> Dict[str, An
     alerts: List[Dict[str, Any]] = []
 
     # 1. Acute Appendicitis Red Flag
-    if any(k in t_lower or k in d_lower for k in ["appendicitis", "mcburney", "rlq", "right lower quadrant", "rebound tenderness"]):
+    appendicitis_kw = ["appendicitis", "mcburney", "rlq", "right lower quadrant", "rebound tenderness"]
+    if any(k in t_lower or k in d_lower for k in appendicitis_kw):
         alerts.append({
             "severity": "HIGH",
             "category": "Surgical Abdomen Red Flag",
             "title": "Acute Appendicitis / Right Lower Quadrant Peritonitis",
             "description": "Migration of abdominal pain to RLQ with McBurney's tenderness, guarding, and leukocytosis.",
             "recommendedAction": "Order Stat Abdominal Ultrasound / CT Abdomen. Keep patient NPO (nothing by mouth) and request Stat Surgical Consult.",
-            "evidenceQuote": "pain around belly button shifted to lower right side... McBurney's point tenderness with positive rebound"
+            "evidenceQuote": _evidence_quote(transcript, appendicitis_kw)
         })
 
     # 2. Acute Coronary Syndrome (ACS) / Myocardial Infarction Red Flag
-    if any(k in t_lower or k in d_lower for k in ["chest pain", "breastbone", "radiates", "left arm", "jaw", "st-segment", "troponin"]):
+    acs_kw = ["chest pain", "breastbone", "radiates", "left arm", "jaw", "st-segment", "troponin"]
+    if any(k in t_lower or k in d_lower for k in acs_kw):
         alerts.append({
             "severity": "HIGH",
             "category": "Cardiovascular Red Flag",
             "title": "Acute Coronary Syndrome / Suspected MI",
             "description": "Retrosternal crushing chest pain with radiation and ECG ST changes detected.",
             "recommendedAction": "Administer Aspirin 325mg + Sublingual Nitroglycerin immediately. Order Stat Troponin I/T and serial 12-lead ECGs. Alert Cath Lab for potential PCI.",
-            "evidenceQuote": "severe crushing chest pain behind my breastbone... radiates to my left arm and jaw"
+            "evidenceQuote": _evidence_quote(transcript, acs_kw)
         })
 
     # 3. Severe Asthma Exacerbation Red Flag
-    if any(k in t_lower or k in d_lower for k in ["asthma", "wheeze", "wheezing", "salbutamol", "albuterol"]):
+    asthma_kw = ["asthma", "wheeze", "wheezing", "salbutamol", "albuterol"]
+    if any(k in t_lower or k in d_lower for k in asthma_kw):
         alerts.append({
             "severity": "HIGH",
             "category": "Respiratory Red Flag",
             "title": "Acute Severe Asthma Exacerbation",
             "description": "Persistent wheezing, chest tightness, and Albuterol non-responsiveness.",
             "recommendedAction": "Administer Nebulized Salbutamol + Ipratropium stat, plus Systemic Corticosteroids (Prednisolone 40mg). Monitor Peak Flow & SpO2.",
-            "evidenceQuote": "coughing constantly, wheezing, Albuterol inhaler isn't giving relief"
+            "evidenceQuote": _evidence_quote(transcript, asthma_kw)
         })
 
     # 4. Diabetic Ketoacidosis (DKA) Red Flag
-    if any(k in t_lower or k in d_lower for k in ["dka", "ketoacidosis", "kussmaul", "ketones", "glucose", "hyperglycemia"]):
+    dka_kw = ["dka", "ketoacidosis", "kussmaul", "ketones", "glucose", "hyperglycemia"]
+    if any(k in t_lower or k in d_lower for k in dka_kw):
         alerts.append({
             "severity": "HIGH",
             "category": "Endocrine Emergency",
             "title": "Diabetic Ketoacidosis (DKA) / Severe Metabolic Acidosis",
-            "description": "Hyperglycemia (410 mg/dL), Kussmaul breathing, positive ketones, and metabolic acidosis.",
+            "description": "Hyperglycemia, Kussmaul breathing, positive ketones, and metabolic acidosis.",
             "recommendedAction": "Initiate aggressive IV Normal Saline fluid resuscitation, continuous IV Regular Insulin infusion, and monitor Serum Potassium q2h.",
-            "evidenceQuote": "glucose 410 mg/dL, pH 7.18, ketones 3+"
+            "evidenceQuote": _evidence_quote(transcript, dka_kw)
         })
 
     # 5. Acute Renal Colic Red Flag
-    if any(k in t_lower or k in d_lower for k in ["renal colic", "flank", "hematuria", "groin", "cva tenderness"]):
+    renal_kw = ["renal colic", "flank", "hematuria", "groin", "cva tenderness"]
+    if any(k in t_lower or k in d_lower for k in renal_kw):
         alerts.append({
             "severity": "MEDIUM",
             "category": "Urological Assessment",
             "title": "Acute Renal Colic / Suspected Nephrolithiasis",
             "description": "Excruciating flank pain radiating to groin with gross hematuria.",
             "recommendedAction": "Administer IV Ketorolac 30mg for analgesia. Order non-contrast CT Abdomen/Pelvis to locate ureteral stone size and location.",
-            "evidenceQuote": "agonizing pain in left flank radiating to groin... pinkish bloody urine"
+            "evidenceQuote": _evidence_quote(transcript, renal_kw)
         })
 
     # 6. Neurological Red Flags (TIA / Stroke / Bell's Palsy)
-    if any(k in t_lower or k in d_lower for k in ["droop", "drooping", "face", "facial", "slurred", "weakness", "numbness"]):
+    neuro_kw = ["droop", "drooping", "face", "facial", "slurred", "weakness", "numbness"]
+    if any(k in t_lower or k in d_lower for k in neuro_kw):
         alerts.append({
             "severity": "HIGH",
             "category": "Neurological Red Flag",
             "title": "Possible TIA / Acute Neurological Event",
             "description": "Transcript indicates sudden onset of facial drooping / weakness. Urgent evaluation required.",
             "recommendedAction": "Order non-contrast Head CT / Brain MRI. Assess NIHSS score and perform cranial nerve exam.",
-            "evidenceQuote": "patient noted face started drooping"
+            "evidenceQuote": _evidence_quote(transcript, neuro_kw)
         })
 
     # 7. Gastrointestinal Assessment (General Epigastric Pain)
-    if any(k in t_lower or k in d_lower for k in ["stomach", "abdomen", "paining", "severe pain", "vomiting"]) and not alerts:
+    gi_kw = ["stomach", "abdomen", "paining", "severe pain", "vomiting"]
+    if any(k in t_lower or k in d_lower for k in gi_kw) and not alerts:
         alerts.append({
             "severity": "MEDIUM",
             "category": "Gastrointestinal Assessment",
             "title": "Acute Epigastric / Abdominal Pain",
-            "description": "Reported abdominal pain accompanied by nausea.",
+            "description": "Reported abdominal pain.",
             "recommendedAction": "Perform abdominal palpation for rebound tenderness/guarding. Check serum amylase, lipase, and LFTs.",
-            "evidenceQuote": "stomach was paining and I had a lot of nauseousness"
+            "evidenceQuote": _evidence_quote(transcript, gi_kw)
         })
 
     sections_checked = 0

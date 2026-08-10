@@ -1,9 +1,10 @@
 # Verifact
 
 A local-first clinical documentation tool: record a consultation, get a diarized
-transcript, an auto-drafted discharge summary / OPD note, ICD-10 codes,
-prescriptions, and clinical risk alerts — all generated on-device, with the
-audio and every derived record staying on your machine.
+transcript, an auto-drafted discharge summary / OPD note, ICD-10 and SNOMED CT
+codes, prescriptions, and evidence-grounded clinical risk alerts — all
+generated on-device, with the audio and every derived record staying on your
+machine.
 
 ## Architecture
 
@@ -14,10 +15,14 @@ audio and every derived record staying on your machine.
 1. `faster-whisper` transcribes the audio.
 2. A speaker-attribution heuristic diarizes it into DOCTOR/PATIENT turns.
 3. Presidio redacts PII before the transcript is handed to the LLM step.
-4. Ollama drafts the note sections (falls back to a fast local NLP extractor
-   if Ollama isn't running).
-5. Local datasets auto-match ICD-10 codes and prescriptions.
-6. Rule-based clinical risk checks run over the transcript.
+4. Ollama drafts the note plus risk alerts and differentials in one
+   schema-constrained call (falls back to a generic extractive summarizer,
+   never a diagnosis guess, if Ollama isn't running — see
+   [Note generation](#note-generation--ai-analysis) below).
+5. Local datasets auto-match ICD-10 codes, SNOMED CT concepts, and
+   prescriptions.
+6. Every risk-alert/differential evidence quote is verified as an actual
+   substring of the transcript before being shown to the clinician.
 7. Everything is persisted to SQLite (`backend/data/verifact_local.db`).
 
 The frontend only ever talks to `localhost:8000` — nothing here calls out to
@@ -43,9 +48,10 @@ brew install ffmpeg        # macOS
 apt-get install ffmpeg     # Debian/Ubuntu
 ```
 
-**Ollama** — used for note drafting. Optional: if it's not running, or none of
-the models below are pulled, `services/llm.py` transparently falls back to a
-fast local NLP extractor (`_dynamic_nlp_note_generator`) instead of failing.
+**Ollama** — used for note drafting, risk-alert detection, and differential
+diagnosis. Optional: if it's not running, or its response doesn't validate,
+`services/llm.py` transparently falls back to a generic extractive summarizer
+instead of failing — see [Note generation & AI analysis](#note-generation--ai-analysis).
 
 ```sh
 brew install ollama
@@ -55,7 +61,10 @@ ollama pull llama3.2:3b   # or: medgemma, llama3, llama3.1, mistral
 
 `_get_available_ollama_model()` in `services/llm.py` checks `localhost:11434`
 for whichever of those models is installed, preferring `medgemma` first. Set
-`OLLAMA_MODEL` to override the fallback name if none of those are found.
+`OLLAMA_MODEL` to override the fallback name if none of those are found. Set
+`OLLAMA_TIMEOUT_SECONDS` (default `90`) if generation needs longer on your
+hardware — a combined note+risk+differential response from a 3B model
+typically takes 10-25s on CPU.
 
 **Whisper models** — `faster-whisper` downloads model weights on first use and
 caches them in RAM for the life of the process (`get_cached_whisper_model` in
@@ -102,13 +111,59 @@ All routes are under `http://localhost:8000/api`.
 | PUT    | `/consultations/{id}`                  | Persist edits (sections, transcript, codes, rx)        |
 | POST   | `/consultations/{id}/sign`             | Lock a note as signed                                  |
 | GET    | `/consultations/{id}/audit-trail`      | Edit history for a consultation                        |
-| GET    | `/icd10?q=`                            | Search the local ICD-10 dataset                        |
+| POST   | `/generate-note`                       | Re-run note/risk/differential generation ("Regenerate Report") |
+| GET    | `/icd10?q=`                             | Search the local ICD-10 dataset                        |
+| GET    | `/snomed?q=`                            | Search the local SNOMED CT dataset                      |
 | GET    | `/medications?q=`                      | Search the local medications dataset                   |
 
-> **Known gap:** the "Regenerate Report" button in the note review screen
-> calls `POST /api/generate-note`, which doesn't exist yet in `main.py` — it
-> currently 404s and the UI silently swallows that into a misleading success
-> toast. Worth fixing in a follow-up.
+## Note generation & AI analysis
+
+`services/llm.generate_clinical_note()` asks Ollama for the note sections,
+risk alerts, and differential diagnoses **in one call**, constrained to an
+explicit JSON Schema passed as Ollama's `format` parameter (not just the
+string `"json"`) — this forces the response into the right shape at the
+decoding level instead of hoping a 3B-parameter model follows prose
+instructions. Even so, every `evidenceQuote`/`evidence` string returned is
+checked against the actual transcript (`_verify_quote`, whitespace/case
+normalized) before being trusted: **anything that isn't a real substring of
+the transcript is dropped**, never shown to the clinician. This is the fix
+for a real failure mode — smaller local models will occasionally invent a
+plausible-sounding quote, and the old version had no way to catch that.
+
+If Ollama is unreachable, its response fails schema validation, or it echoes
+the field descriptions back as if they were the answer (also seen in
+practice, and checked for explicitly — `_looks_like_schema_echo`),
+`_extractive_fallback_note_generator()` takes over: it builds the HPI from
+the transcript's own sentences (patient turns, by default-including anything
+that isn't a question or clearly clinician-phrased) rather than matching
+against a fixed disease list, and explicitly states that diagnosis/treatment/
+follow-up were **not generated** rather than guessing. The note's
+`generationStatus` (`success` | `extracted_fallback` | `demo_fast_extract`)
+is persisted and shown as a banner in the review screen whenever a note
+wasn't LLM-generated — clinicians should not assume a fallback note is
+equivalent to one the model actually drafted.
+
+`services/clinical_rules.py` and `services/differential.py` are the
+rule-based fallback for risk alerts / differentials specifically (used only
+when the LLM path above didn't run) — keyword-triggered, but each
+`evidenceQuote` is the actual matching sentence pulled from the real
+transcript (`services/text_extraction.find_sentences_containing`), never a
+hardcoded string.
+
+## SNOMED CT
+
+`backend/data/snomed_codes.json` is a curated subset (~34 concepts) spanning
+common primary/urgent-care presentations, each with a `conceptId`,
+`preferredTerm`, and cross-referenced `icd10Map` — not the full SNOMED CT
+International release (350k+ concepts, distributed as licensed RF2 files
+under an IHTSDO Affiliate Agreement, which doesn't fit this app's
+load-a-JSON-and-cache architecture). Concept IDs were verified against
+public SNOMED CT references while building this dataset rather than guessed;
+still, treat it as best-effort for a local/personal tool, not a
+production-grade terminology binding — verify against an official
+terminology server before any real interoperability or billing use.
+`auto_match_snomed_codes()` in `services/medical_knowledge.py` matches it the
+same way ICD-10 is matched (keyword-scored, top 5).
 
 ## Speaker diarization
 
@@ -157,23 +212,30 @@ nullable columns. If the project outgrows that, reach for Alembic.
 
 ```sh
 cd backend
-venv/bin/pytest          # 23 tests, no model weights or GPU required
+venv/bin/pytest          # 58 tests, no model weights, GPU, or Ollama required
 ```
 
-The suite mocks `faster-whisper` entirely (`get_cached_whisper_model` is
-patched with a fake model), so it runs in well under a second and never
-touches `backend/data/verifact_local.db`. It covers:
+The suite mocks external calls at the boundary (`faster-whisper`'s model,
+Ollama's HTTP call), so it runs in well under a second and never touches
+`backend/data/verifact_local.db`. Beyond the diarization/migration/filename
+tests described above, it covers:
 
-- `test_speaker_attribution.py` — the diarization heuristic, rule by rule.
-- `test_transcription.py` — `transcribe_audio` end to end against mocked
-  segments, including a regression test built from a real recording where
-  every segment used to collapse onto a single speaker.
-- `test_schema_migration.py` — `ensure_schema_current()` against a
-  deliberately stale SQLite file, reproducing the exact `OperationalError`
-  incident above.
-- `test_audio_filename.py` — filename uniqueness; two uploads that used to
-  land in the same wall-clock second would silently overwrite each other's
-  saved audio.
+- `test_llm_ollama.py` — `generate_clinical_note` against a mocked Ollama
+  response: success path, timeout/malformed-JSON fallback, and the
+  quote-verification behavior (an unverifiable evidence quote is dropped
+  even when the rest of the response is well-formed).
+- `test_extractive_fallback_generic.py` — regression test for the original
+  bug report: a real, non-emergency transcript (abdominal cramping,
+  bloating, diarrhea) must produce a real narrative, never a raw transcript
+  dump, and must not guess a diagnosis.
+- `test_quote_verification.py` — unit tests for the substring-verification
+  helpers themselves.
+- `test_clinical_rules_evidence_extraction.py` — confirms the rule-based
+  fallback's evidence is a real transcript sentence, not a canned string.
+- `test_snomed_matching.py` — SNOMED dataset loading and keyword matching.
+- `test_medical_knowledge.py` — prescription suggestion relevance (a
+  regression test for an IBS case that used to also suggest Aspirin,
+  Nitroglycerin, and an SSRI).
 
 There's no frontend test runner configured yet — `npm run lint` (ESLint +
 Prettier) is the only current guard on `src/`.
